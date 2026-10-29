@@ -11,9 +11,18 @@ const categoryNames=[['','全部家具'],['sofa','沙发'],['chair','餐椅'],['
 const metrics=[['region','替换范围'],['success','替换成功'],['natural','自然程度'],['protection','非目标保护'],['texture','纹理还原']];
 const metricLabels={pass:'通过',partial:'部分通过',fail:'未通过'};
 function taskDescription(i){return ({sofa:'客厅场景-替换沙发材质',chair:'餐厅场景-替换餐椅软包材质',bed:'卧室场景-替换床架材质',combo:'卧室场景-替换床架与床头柜材质',nightstand:'卧室场景-替换床头柜材质'})[i.category]||i.categoryName}
-function renderList(){const list=$('#list');list.innerHTML=filtered.map(i=>`<button class="case ${i===current?'selected':''}" data-case="${esc(i.caseId)}"><img src="${imageUrl(selected(i).thumbnail||selected(i).result)}" loading="lazy" decoding="async" width="94" height="78" alt=""><span><b>${esc(i.caseId)}</b><small>${esc(taskDescription(i))}</small></span></button>`).join('');list.querySelectorAll('button').forEach(b=>b.onclick=()=>show(itemMap.get(b.dataset.case)));$('#listCount').textContent=filtered.length+'个样本'}
+let thumbnailObserver;
+function loadVisibleThumbnails(){
+ thumbnailObserver?.disconnect();
+ const images=[...$('#list').querySelectorAll('img[data-src]')];
+ if('IntersectionObserver' in window){
+  thumbnailObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const img=entry.target;img.src=img.dataset.src;delete img.dataset.src;thumbnailObserver.unobserve(img)}},{root:$('#list'),rootMargin:'0px',threshold:.01});
+  images.forEach(img=>thumbnailObserver.observe(img));
+ }else{for(const img of images){img.src=img.dataset.src;delete img.dataset.src;img.loading='lazy'}}
+}
+function renderList(){const list=$('#list');list.innerHTML=filtered.map(i=>`<button class="case ${i===current?'selected':''}" data-case="${esc(i.caseId)}"><img data-src="${imageUrl(D.navigationAssets?.[selected(i).thumbnail]||selected(i).thumbnail||selected(i).result)}" fetchpriority="low" decoding="async" width="94" height="78" alt=""><span><b>${esc(i.caseId)}</b><small>${esc(taskDescription(i))}</small></span></button>`).join('');list.querySelectorAll('button').forEach(b=>b.onclick=()=>show(itemMap.get(b.dataset.case)));$('#listCount').textContent=filtered.length+'个样本';loadVisibleThumbnails()}
 function filter(){const q=$('#search').value.trim().toLowerCase();filtered=D.items.filter(i=>(!category||category===i.category)&&(!q||[i.caseId,i.sceneName,i.materialDescription].join(' ').toLowerCase().includes(q)));renderList();show(filtered.includes(current)?current:filtered[0])}
-function show(i){current=i;$('main').classList.toggle('empty',!i);if(!i){$('#viewerError').textContent='没有匹配样本';$('#title').textContent='';$('#position').textContent='0 / 0';return}$('#viewerError').textContent='';$('#title').textContent=i.sceneName;$('#position').textContent=`${filtered.indexOf(i)+1} / ${filtered.length}`;setImage('material',i.material);$('#materialInfo').textContent=i.materialId+'　'+i.materialDescription;$('#humanGrade').textContent=gradeMap[i.humanGrade]?.label||'未分档';$('#humanNote').textContent=i.humanNote||'';const c=preview(),r=c.review||{};$('#aiMetrics').innerHTML=metrics.map(([key,label])=>`<div><dt>${label}</dt><dd class="metric-${esc(r[key]||'unknown')}">${esc(metricLabels[r[key]]||'未评估')}</dd></div>`).join('');$('#aiNote').textContent=r.note||'';$('#list').querySelectorAll('.case').forEach(b=>b.classList.toggle('selected',b.dataset.case===i.caseId));$('#list .selected')?.scrollIntoView({block:'nearest'});resetView();renderMode();try{localStorage.setItem('material-showcase-online-last-case',i.caseId)}catch{}}
+function show(i){cancelPreload();current=i;$('main').classList.toggle('empty',!i);if(!i){$('#viewerError').textContent='没有匹配样本';$('#title').textContent='';$('#position').textContent='0 / 0';return}$('#viewerError').textContent='';$('#title').textContent=i.sceneName;$('#position').textContent=`${filtered.indexOf(i)+1} / ${filtered.length}`;setImage('material',i.material);$('#materialInfo').textContent=i.materialId+'　'+i.materialDescription;$('#humanGrade').textContent=gradeMap[i.humanGrade]?.label||'未分档';$('#humanNote').textContent=i.humanNote||'';const c=preview(),r=c.review||{};$('#aiMetrics').innerHTML=metrics.map(([key,label])=>`<div><dt>${label}</dt><dd class="metric-${esc(r[key]||'unknown')}">${esc(metricLabels[r[key]]||'未评估')}</dd></div>`).join('');$('#aiNote').textContent=r.note||'';$('#list').querySelectorAll('.case').forEach(b=>b.classList.toggle('selected',b.dataset.case===i.caseId));$('#list .selected')?.scrollIntoView({block:'nearest'});resetView();renderMode();schedulePreload();try{localStorage.setItem('material-showcase-online-last-case',i.caseId)}catch{}}
 function renderCategories(){const counts=Object.fromEntries(categoryNames.map(([key])=>[key,key?D.items.filter(i=>i.category===key).length:D.items.length]));$('#categoryLabel').textContent=categoryNames.find(([key])=>key===category)[1];$('#categoryCount').textContent=counts[category];$('#categoryMenu').innerHTML=categoryNames.map(([key,label])=>`<button role="option" aria-selected="${category===key}" data-category="${key}"><span>${label}</span><span class="option-count">${counts[key]}</span></button>`).join('');$('#categoryMenu').querySelectorAll('button').forEach(b=>{b.onclick=()=>{category=b.dataset.category;renderCategories();closeCategories();filter()};b.onkeydown=e=>{const buttons=[...$('#categoryMenu').querySelectorAll('button')],n=buttons.indexOf(b);if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(n+(e.key==='ArrowDown'?1:buttons.length-1))%buttons.length].focus()}}})}
 function closeCategories(focus=true){$('#categoryMenu').hidden=true;$('#categoryButton').setAttribute('aria-expanded','false');if(focus)$('#categoryButton').focus()}
 function openCategories(){$('#categoryMenu').hidden=false;$('#categoryButton').setAttribute('aria-expanded','true');$('#categoryMenu [aria-selected=true]').focus()}
@@ -23,8 +32,62 @@ function draw(){frame=0;const transform=`translate3d(${px}px,${py}px,0) scale(${
 function scheduleDraw(){if(!frame)frame=requestAnimationFrame(draw)}
 function resetView(){z=1;px=py=0;$('#split').value=50;scheduleDraw()}
 const upgrades=new Map();
-function setImage(id,p){const el=$('#'+id);if(el.dataset.asset===p)return;el.dataset.asset=p;el.dataset.resolution='preview';el.decoding='async';el.fetchPriority=id==='material'?'low':'high';el.src=imageUrl(D.previewAssets?.[p]||p);el.onerror=()=>{el.onerror=null;if(el.dataset.asset===p){el.src=imageUrl(p);el.dataset.resolution='full'}}}
-function upgradeImages(){for(const id of ['before','after']){const el=$('#'+id),p=el.dataset.asset;if(!p||el.dataset.resolution==='full')continue;if(!upgrades.has(p)){const image=new Image();image.decoding='async';image.src=imageUrl(p);const ready=image.decode().then(()=>image).catch(()=>{upgrades.delete(p);return null});upgrades.set(p,ready);while(upgrades.size>8)upgrades.delete(upgrades.keys().next().value)}upgrades.get(p).then(image=>{if(image&&el.dataset.asset===p&&z>1.05){el.src=image.src;el.dataset.resolution='full'}})}}
+let preloadVersion=0,preloadTimer,preloadController;
+const preloaded=new Set();
+function cancelPreload(){preloadVersion++;clearTimeout(preloadTimer);preloadController?.abort();preloadController=null}
+function previewPath(asset,id){
+ const info=D.responsiveAssets?.[asset];if(!info)return D.previewAssets?.[asset]||asset;
+ const box=(id==='material'?$('#material'):$('#viewer')).getBoundingClientRect();
+ const ratio=info.width/info.height;
+ const longest=Math.max(Math.min(box.width,box.height*ratio),Math.min(box.height,box.width/ratio));
+ const target=Math.max(1,longest)*(window.devicePixelRatio||1);
+ return (info.variants.find(v=>v.edge>=target)||info.variants.at(-1)).path;
+}
+function setImage(id,asset){
+ const el=$('#'+id);if(el.dataset.asset===asset&&el.dataset.resolution==='full')return;
+ const src=imageUrl(previewPath(asset,id));if(el.dataset.asset===asset&&el.getAttribute('src')===src)return;
+ el.dataset.asset=asset;el.dataset.resolution='preview';el.decoding='async';el.fetchPriority=id==='material'?'auto':'high';
+ el.onerror=()=>{el.onerror=null;if(el.dataset.asset===asset){el.src=imageUrl(asset);el.dataset.resolution='full'}};
+ el.src=src;
+}
+function originalReady(asset){
+ if(!upgrades.has(asset)){
+  const image=new Image();image.decoding='async';image.fetchPriority='high';image.src=imageUrl(asset);
+  const ready=image.decode().then(()=>image).catch(()=>{upgrades.delete(asset);return null});upgrades.set(asset,ready);
+  while(upgrades.size>8)upgrades.delete(upgrades.keys().next().value);
+ }
+ return upgrades.get(asset);
+}
+function upgradeImages(){
+ cancelPreload();
+ for(const id of ['before','after']){
+  const el=$('#'+id),asset=el.dataset.asset;if(!asset||el.dataset.resolution==='full'||(id==='before'&&mode==='result'))continue;
+  originalReady(asset).then(image=>{if(image&&el.dataset.asset===asset&&z>1.05){el.src=image.src;el.dataset.resolution='full'}});
+ }
+}
+function schedulePreload(){
+ const token=preloadVersion,item=current,connection=navigator.connection;
+ if(!item||document.hidden||connection?.saveData||/2g/.test(connection?.effectiveType||''))return;
+ Promise.allSettled(['before','after','material'].map(id=>$('#'+id).decode())).then(()=>{
+  if(token!==preloadVersion)return;
+  preloadTimer=setTimeout(async()=>{
+   if(token!==preloadVersion||document.hidden||z>1.05)return;
+   preloadController=new AbortController();const controller=preloadController;
+   const index=filtered.indexOf(item),neighbors=[filtered[index+1],filtered[index-1]].filter(Boolean),urls=[];
+   for(const neighbor of neighbors)for(const [id,asset] of [['after',selected(neighbor).result],['before',neighbor.annotated||neighbor.original]]){
+    const url=imageUrl(previewPath(asset,id));if(!urls.includes(url))urls.push(url);
+   }
+   for(const url of urls){
+    if(token!==preloadVersion||document.hidden||z>1.05)break;
+    if(preloaded.has(url))continue;
+    try{const response=await fetch(url,{cache:'force-cache',priority:'low',signal:controller.signal});if(response.ok){await response.arrayBuffer();preloaded.add(url);while(preloaded.size>24)preloaded.delete(preloaded.values().next().value)}}catch{break}
+   }
+  },1200);
+ });
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelPreload();else if(current)schedulePreload()});
+let resizeTimer;
+function responsiveResize(){scheduleDraw();clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(!current)return;cancelPreload();for(const id of ['before','after','material']){const asset=$('#'+id).dataset.asset;if(asset)setImage(id,asset)}schedulePreload()},120)}
 
 function renderMode(){if(!current)return;const c=preview();setImage('before',current.annotated||current.original);setImage('after',c.result);$('#before').style.display=mode==='result'?'none':'';$('#divider').hidden=mode==='result';$('#imageLabels').hidden=mode==='result';$('#leftLabel').textContent='标注场景';$('#rightLabel').textContent='当前展示效果';$('#split').disabled=mode==='result';$('#compareButton').setAttribute('aria-pressed',mode==='compare');$('#resultButton').setAttribute('aria-pressed',mode==='result');scheduleDraw()}
 function zoomAt(next,x,y){next=Math.max(1,Math.min(8,next));px=x-(x-px)*next/z;py=y-(y-py)*next/z;z=next;if(z===1)px=py=0;else if(z>1.05)upgradeImages();scheduleDraw()}
@@ -40,7 +103,8 @@ function move(n){if(filtered.length)show(filtered[(filtered.indexOf(current)+n+f
 $('#prevButton').onclick=()=>move(-1);$('#nextButton').onclick=()=>move(1);
 $('#search').oninput=filter;
 function fullSources(){return current?[current.original,current.annotated,current.material,preview().result]:[]}
-function showFull(){const s=fullSources();if(s.length){$('#fullImage').src=imageUrl(s[fullIndex]);$('#fullCaption').textContent=['原始场景','标注场景','参考材质','替换效果'][fullIndex]}}
-$('#material').onclick=()=>{if(!current)return;fullIndex=2;showFull();$('#full').hidden=false};$('#closeFull').onclick=()=>$('#full').hidden=true;
+let fullToken=0;
+function showFull(){const sources=fullSources();if(!sources.length)return;cancelPreload();const token=++fullToken,asset=sources[fullIndex],el=$('#fullImage');el.dataset.asset=asset;el.dataset.resolution='preview';el.src=imageUrl(D.previewAssets?.[asset]||asset);$('#fullCaption').textContent=['原始场景','标注场景','参考材质','替换效果'][fullIndex];originalReady(asset).then(image=>{if(image&&token===fullToken&&!$('#full').hidden){el.src=image.src;el.dataset.resolution='full'}})}
+$('#material').onclick=()=>{if(!current)return;fullIndex=2;showFull();$('#full').hidden=false};$('#closeFull').onclick=()=>{fullToken++;$('#full').hidden=true;schedulePreload()};
 document.addEventListener('keydown',e=>{if(!$('#full').hidden){if(e.key==='Escape')$('#closeFull').click();else if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();fullIndex=(fullIndex+(e.key==='ArrowRight'?1:3))%4;showFull()}return}if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();move(e.key==='ArrowRight'?1:-1)}});
-window.addEventListener('resize',scheduleDraw);let last;try{last=localStorage.getItem('material-showcase-online-last-case')}catch{}renderCategories();renderList();show(itemMap.get(new URLSearchParams(location.search).get('case')||last)||D.items[0]);
+window.addEventListener('resize',responsiveResize);let last;try{last=localStorage.getItem('material-showcase-online-last-case')}catch{}renderCategories();renderList();show(itemMap.get(new URLSearchParams(location.search).get('case')||last)||D.items[0]);
